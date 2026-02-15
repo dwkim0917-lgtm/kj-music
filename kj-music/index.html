@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>리리의 숲 · 아람북스</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
+      background: linear-gradient(180deg, #2d1b4e 0%, #1a0a2e 100%);
+      min-height: 100vh;
+      color: #fff;
+      padding: 20px;
+      padding-bottom: 120px;
+    }
+    h1 {
+      text-align: center;
+      font-size: 1.4rem;
+      margin-bottom: 24px;
+      font-weight: 600;
+    }
+    .playlist {
+      list-style: none;
+      max-width: 400px;
+      margin: 0 auto 100px;
+    }
+    .playlist li {
+      background: rgba(255,255,255,0.08);
+      border-radius: 12px;
+      padding: 14px 16px;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      cursor: pointer;
+      transition: background 0.2s;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+    .playlist li:hover, .playlist li.playing {
+      background: rgba(255,255,255,0.15);
+    }
+    .playlist li .num { color: rgba(255,255,255,0.6); font-size: 0.9rem; min-width: 24px; }
+    .playlist li .title { flex: 1; font-size: 1rem; }
+    .playlist li .dur { color: rgba(255,255,255,0.5); font-size: 0.85rem; }
+    .controls-wrap {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: rgba(26,10,46,0.95);
+      padding: 16px 20px 24px;
+      border-top: 1px solid rgba(255,255,255,0.1);
+      max-width: 500px;
+      margin: 0 auto;
+    }
+    .now-playing {
+      font-size: 0.9rem;
+      color: rgba(255,255,255,0.8);
+      margin-bottom: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .progress-wrap {
+      height: 4px;
+      background: rgba(255,255,255,0.2);
+      border-radius: 2px;
+      margin-bottom: 14px;
+      cursor: pointer;
+      touch-action: none;
+    }
+    .progress-bar {
+      height: 100%;
+      width: 0%;
+      background: #b794f6;
+      border-radius: 2px;
+      transition: width 0.1s linear;
+    }
+    .time-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.75rem;
+      color: rgba(255,255,255,0.5);
+      margin-bottom: 12px;
+    }
+    .buttons {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .btn {
+      width: 44px;
+      height: 44px;
+      border: none;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.15);
+      color: #fff;
+      font-size: 1.2rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s;
+    }
+    .btn:active { background: rgba(255,255,255,0.25); }
+    .btn.play-pause { width: 56px; height: 56px; font-size: 1.6rem; background: #7c3aed; }
+    .mode-wrap {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      margin-top: 14px;
+    }
+    .mode-btn {
+      padding: 8px 14px;
+      border-radius: 20px;
+      border: 1px solid rgba(255,255,255,0.3);
+      background: transparent;
+      color: rgba(255,255,255,0.9);
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .mode-btn.active {
+      background: #7c3aed;
+      border-color: #7c3aed;
+    }
+  </style>
+</head>
+<body>
+  <h1>리리의 숲 · 아람북스</h1>
+  <ul class="playlist" id="playlist"></ul>
+
+  <div class="controls-wrap">
+    <div class="now-playing" id="nowPlaying">재생할 곡을 선택하세요</div>
+    <div class="progress-wrap" id="progressWrap">
+      <div class="progress-bar" id="progressBar"></div>
+    </div>
+    <div class="time-row">
+      <span id="currentTime">0:00</span>
+      <span id="totalTime">0:00</span>
+    </div>
+    <div class="buttons">
+      <button class="btn" id="prevBtn" title="이전">⏮</button>
+      <button class="btn play-pause" id="playBtn" title="재생/일시정지">▶</button>
+      <button class="btn" id="nextBtn" title="다음">⏭</button>
+    </div>
+    <div class="mode-wrap">
+      <button class="mode-btn active" id="modeContinuous" data-mode="continuous">연속 재생</button>
+      <button class="mode-btn" id="modeRepeatOne" data-mode="repeatOne">한 곡 반복</button>
+    </div>
+  </div>
+
+  <p style="text-align:center; font-size:0.7rem; color:rgba(255,255,255,0.4); margin-top:8px;">동요 5곡: <a href="https://www.soundhelix.com" target="_blank" rel="noopener" style="color:rgba(255,255,255,0.5);">SoundHelix</a> 무료 음원</p>
+
+  <audio id="audio" preload="metadata"></audio>
+
+  <script>
+    const audio = document.getElementById('audio');
+    const playlistEl = document.getElementById('playlist');
+    const nowPlayingEl = document.getElementById('nowPlaying');
+    const progressWrap = document.getElementById('progressWrap');
+    const progressBar = document.getElementById('progressBar');
+    const currentTimeEl = document.getElementById('currentTime');
+    const totalTimeEl = document.getElementById('totalTime');
+    const playBtn = document.getElementById('playBtn');
+    const prevBtn = document.getElementById('prevBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    const modeContinuous = document.getElementById('modeContinuous');
+    const modeRepeatOne = document.getElementById('modeRepeatOne');
+
+    const tracks = [
+      { title: '리리의 숲 노래 1', src: 'audio/01.mp3', duration: '' },
+      { title: '리리의 숲 노래 2', src: 'audio/02.mp3', duration: '' },
+      { title: '리리의 숲 노래 3', src: 'audio/03.mp3', duration: '' },
+      { title: '리리의 숲 노래 4', src: 'audio/04.mp3', duration: '' },
+      { title: '리리의 숲 노래 5', src: 'audio/05.mp3', duration: '' },
+      { title: '지식특공대 노래 1', src: 'audio/jisik_01.mp3', duration: '' },
+      { title: '지식특공대 노래 2', src: 'audio/jisik_02.mp3', duration: '' },
+      { title: '지식특공대 노래 3', src: 'audio/jisik_03.mp3', duration: '' },
+      { title: '지식특공대 노래 4', src: 'audio/jisik_04.mp3', duration: '' },
+      { title: '지식특공대 노래 5', src: 'audio/jisik_05.mp3', duration: '' },
+      { title: '동요 · 숲속 산책', src: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3', duration: '' },
+      { title: '동요 · 맑은 아침', src: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3', duration: '' },
+      { title: '동요 · 즐거운 오후', src: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3', duration: '' },
+      { title: '동요 · 별이 빛나는 밤', src: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3', duration: '' },
+      { title: '동요 · 상쾌한 하루', src: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3', duration: '' },
+    ];
+    // 리리의 숲: 01.mp3~05.mp3 / 지식특공대: jisik_01~05 / 동요 5곡: SoundHelix 무료 음원
+
+    let currentIndex = 0;
+    let mode = 'continuous'; // 'continuous' | 'repeatOne'
+
+    function formatTime(sec) {
+      if (!isFinite(sec) || isNaN(sec)) return '0:00';
+      const m = Math.floor(sec / 60);
+      const s = Math.floor(sec % 60);
+      return m + ':' + (s < 10 ? '0' : '') + s;
+    }
+
+    function renderPlaylist() {
+      playlistEl.innerHTML = tracks.map((t, i) => `
+        <li class="${i === currentIndex ? 'playing' : ''}" data-index="${i}">
+          <span class="num">${i + 1}</span>
+          <span class="title">${t.title}</span>
+          <span class="dur">${t.duration || '-'}</span>
+        </li>
+      `).join('');
+      playlistEl.querySelectorAll('li').forEach(li => {
+        li.addEventListener('click', () => playTrack(parseInt(li.dataset.index, 10)));
+      });
+    }
+
+    function setMode(m) {
+      mode = m;
+      modeContinuous.classList.toggle('active', m === 'continuous');
+      modeRepeatOne.classList.toggle('active', m === 'repeatOne');
+    }
+
+    modeContinuous.addEventListener('click', () => setMode('continuous'));
+    modeRepeatOne.addEventListener('click', () => setMode('repeatOne'));
+
+    function playTrack(index) {
+      if (index < 0 || index >= tracks.length) return;
+      currentIndex = index;
+      const t = tracks[index];
+      audio.src = t.src;
+      audio.load();
+      audio.play().catch(() => {});
+      nowPlayingEl.textContent = t.title;
+      totalTimeEl.textContent = t.duration || '0:00';
+      renderPlaylist();
+      playBtn.textContent = '⏸';
+    }
+
+    function nextTrack() {
+      if (mode === 'repeatOne') {
+        audio.currentTime = 0;
+        audio.play().catch(() => {});
+        return;
+      }
+      const next = currentIndex + 1;
+      if (next < tracks.length) playTrack(next);
+      else {
+        currentIndex = 0;
+        playTrack(0);
+      }
+    }
+
+    function prevTrack() {
+      if (audio.currentTime > 3) {
+        audio.currentTime = 0;
+        return;
+      }
+      if (currentIndex > 0) playTrack(currentIndex - 1);
+      else audio.currentTime = 0;
+    }
+
+    audio.addEventListener('ended', () => {
+      if (mode === 'repeatOne') {
+        audio.currentTime = 0;
+        audio.play().catch(() => {});
+      } else nextTrack();
+    });
+
+    audio.addEventListener('timeupdate', () => {
+      const p = audio.duration ? (audio.currentTime / audio.duration) * 100 : 0;
+      progressBar.style.width = p + '%';
+      currentTimeEl.textContent = formatTime(audio.currentTime);
+    });
+
+    audio.addEventListener('loadedmetadata', () => {
+      const t = tracks[currentIndex];
+      if (t) t.duration = formatTime(audio.duration);
+      totalTimeEl.textContent = formatTime(audio.duration);
+    });
+
+    audio.addEventListener('play', () => { playBtn.textContent = '⏸'; });
+    audio.addEventListener('pause', () => { playBtn.textContent = '▶'; });
+
+    progressWrap.addEventListener('click', (e) => {
+      if (!audio.duration) return;
+      const x = e.offsetX / progressWrap.offsetWidth;
+      audio.currentTime = x * audio.duration;
+    });
+
+    playBtn.addEventListener('click', () => {
+      if (audio.paused) {
+        if (!audio.src) playTrack(0);
+        else audio.play().catch(() => {});
+      } else audio.pause();
+    });
+    prevBtn.addEventListener('click', prevTrack);
+    nextBtn.addEventListener('click', nextTrack);
+
+    renderPlaylist();
+  </script>
+</body>
+</html>
