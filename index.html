@@ -155,7 +155,11 @@
   <p style="text-align:center; font-size:0.7rem; color:rgba(255,255,255,0.4); margin-top:8px;">동요 5곡: <a href="https://www.soundhelix.com" target="_blank" rel="noopener" style="color:rgba(255,255,255,0.5);">SoundHelix</a> 무료 음원</p>
 
   <audio id="audio" preload="metadata"></audio>
+  <div id="ytPlayerWrap" style="position:absolute;top:-9999px;left:-9999px;width:1px;height:1px;overflow:hidden;">
+    <div id="ytPlayer"></div>
+  </div>
 
+  <script src="https://www.youtube.com/iframe_api"></script>
   <script>
     const audio = document.getElementById('audio');
     const playlistEl = document.getElementById('playlist');
@@ -186,11 +190,82 @@
       { title: '동요 · 즐거운 오후', src: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3', duration: '' },
       { title: '동요 · 별이 빛나는 밤', src: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3', duration: '' },
       { title: '동요 · 상쾌한 하루', src: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3', duration: '' },
+      { title: 'YouTube · 영상 1', type: 'youtube', videoId: 'I74iXZB6klk', duration: '' },
+      { title: 'YouTube · 영상 2', type: 'youtube', videoId: 'ZrHGsww0jTI', duration: '' },
     ];
-    // 리리의 숲: 01.mp3~05.mp3 / 지식특공대: jisik_01~05 / 동요 5곡: SoundHelix 무료 음원
 
     let currentIndex = 0;
     let mode = 'continuous'; // 'continuous' | 'repeatOne'
+    let ytPlayer = null;
+    let ytReady = false;
+    let ytTimeInterval = null;
+    let activeSource = 'audio'; // 'audio' | 'youtube'
+
+    function isYouTube(index) {
+      return tracks[index] && tracks[index].type === 'youtube';
+    }
+
+    function stopYouTube() {
+      if (ytPlayer && typeof ytPlayer.stopVideo === 'function') {
+        ytPlayer.stopVideo();
+      }
+      if (ytTimeInterval) {
+        clearInterval(ytTimeInterval);
+        ytTimeInterval = null;
+      }
+    }
+
+    function stopAudio() {
+      audio.pause();
+      audio.currentTime = 0;
+    }
+
+    window.onYouTubeIframeAPIReady = function() {
+      ytPlayer = new YT.Player('ytPlayer', {
+        height: '1',
+        width: '1',
+        playerVars: { autoplay: 0, controls: 0 },
+        events: {
+          onReady: function() { ytReady = true; },
+          onStateChange: function(e) {
+            if (e.data === YT.PlayerState.ENDED) {
+              if (mode === 'repeatOne') {
+                ytPlayer.seekTo(0);
+                ytPlayer.playVideo();
+              } else {
+                nextTrack();
+              }
+            }
+            if (e.data === YT.PlayerState.PLAYING) {
+              playBtn.textContent = '⏸';
+              var dur = ytPlayer.getDuration();
+              if (dur) {
+                tracks[currentIndex].duration = formatTime(dur);
+                totalTimeEl.textContent = formatTime(dur);
+                renderPlaylist();
+              }
+              startYtTimeUpdate();
+            }
+            if (e.data === YT.PlayerState.PAUSED) {
+              playBtn.textContent = '▶';
+            }
+          }
+        }
+      });
+    };
+
+    function startYtTimeUpdate() {
+      if (ytTimeInterval) clearInterval(ytTimeInterval);
+      ytTimeInterval = setInterval(function() {
+        if (!ytPlayer || typeof ytPlayer.getCurrentTime !== 'function') return;
+        var cur = ytPlayer.getCurrentTime();
+        var dur = ytPlayer.getDuration();
+        var p = dur ? (cur / dur) * 100 : 0;
+        progressBar.style.width = p + '%';
+        currentTimeEl.textContent = formatTime(cur);
+        totalTimeEl.textContent = formatTime(dur);
+      }, 250);
+    }
 
     function formatTime(sec) {
       if (!isFinite(sec) || isNaN(sec)) return '0:00';
@@ -225,13 +300,25 @@
       if (index < 0 || index >= tracks.length) return;
       currentIndex = index;
       const t = tracks[index];
-      audio.src = t.src;
-      audio.load();
-      audio.play().catch(() => {});
       nowPlayingEl.textContent = t.title;
       totalTimeEl.textContent = t.duration || '0:00';
       renderPlaylist();
-      playBtn.textContent = '⏸';
+
+      if (isYouTube(index)) {
+        stopAudio();
+        activeSource = 'youtube';
+        if (ytReady && ytPlayer) {
+          ytPlayer.loadVideoById(t.videoId);
+        }
+        playBtn.textContent = '⏸';
+      } else {
+        stopYouTube();
+        activeSource = 'audio';
+        audio.src = t.src;
+        audio.load();
+        audio.play().catch(() => {});
+        playBtn.textContent = '⏸';
+      }
     }
 
     function nextTrack() {
@@ -280,16 +367,30 @@
     audio.addEventListener('pause', () => { playBtn.textContent = '▶'; });
 
     progressWrap.addEventListener('click', (e) => {
-      if (!audio.duration) return;
       const x = e.offsetX / progressWrap.offsetWidth;
-      audio.currentTime = x * audio.duration;
+      if (activeSource === 'youtube' && ytPlayer && typeof ytPlayer.getDuration === 'function') {
+        ytPlayer.seekTo(x * ytPlayer.getDuration(), true);
+      } else {
+        if (!audio.duration) return;
+        audio.currentTime = x * audio.duration;
+      }
     });
 
     playBtn.addEventListener('click', () => {
-      if (audio.paused) {
-        if (!audio.src) playTrack(0);
-        else audio.play().catch(() => {});
-      } else audio.pause();
+      if (activeSource === 'youtube' && ytPlayer && typeof ytPlayer.getPlayerState === 'function') {
+        const state = ytPlayer.getPlayerState();
+        if (state === YT.PlayerState.PLAYING) {
+          ytPlayer.pauseVideo();
+        } else {
+          if (!ytPlayer.getVideoUrl || ytPlayer.getPlayerState() === -1) playTrack(0);
+          else ytPlayer.playVideo();
+        }
+      } else {
+        if (audio.paused) {
+          if (!audio.src) playTrack(0);
+          else audio.play().catch(() => {});
+        } else audio.pause();
+      }
     });
     prevBtn.addEventListener('click', prevTrack);
     nextBtn.addEventListener('click', nextTrack);
